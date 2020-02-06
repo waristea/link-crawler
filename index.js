@@ -40,9 +40,13 @@ async function scrap(){
   return urls;
 }
 
-const urls = scrap().then(urls => {
-  console.log(urls);
+var urls = scrap().then(urls => {
+  const urls_set = new Set(urls);
+
+  console.log(urls_set);
+
+  fs.writeFileSync('/tmp/test.txt', urls_set);
   console.log("file is written to /tmp/test.txt");
-  fs.writeFileSync('/tmp/test.txt', urls);
-  return urls;
+
+  return urls_set;
 });
