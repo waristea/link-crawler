@@ -6,20 +6,23 @@ const puppeteer = require('puppeteer');
 
 // Read targets from a file
 async function readTargets(filePath){
-  if (!filePath) return 'https://www.google.com';
+  if (!filePath) return ['https://www.youtube.com'];
 
   var targets =  fs.readFileSync(filePath).toString().split("\n");
   targets = await targets.filter(Boolean);
   return await targets
 }
 
-function writeResults(urls_set, resultPath){
+// Write results to a file
+function writeResults(urls_set, resultPath, is_printed){
   resultPath = resultPath ? resultPath : './results.txt';
 
   fs.writeFileSync(resultPath, "");
   urls_set.forEach((item) => {
     fs.appendFileSync(resultPath, item+"\n");
   });
+
+  if (is_printed) console.log(urls_set);
 
   console.log("file is written to "+resultPath);
 }
@@ -78,6 +81,6 @@ const resultPath = args[1] ? args[1].toString() : undefined;
 readTargets(targetPath).then((targets,resultPath)=>{
   console.log(targets);
   scrap(targets).then(urls => {
-    writeResults(new Set(urls), resultPath)
+    writeResults(new Set(urls), resultPath, true)
   });
 });
