@@ -3,12 +3,32 @@
 const url = require('url');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
+var yargs = require('yargs');
+// https://stackoverflow.com/questions/9781218/how-to-change-node-jss-console-font-color
+
+
+/*
+const path = './file.txt'
+
+try {
+  if (fs.existsSync(path)) {
+    //file exists
+  }
+} catch(err) {
+  console.error(err)
+}
+
+*/
+
+// Determine if it is pure filename, ./filename, a domain name, a list of domain name,
+
 
 // Read targets from a file
-async function readTargets(filePath, default){
-  if (!filePath) return ['https://www.youtube.com'];
+async function readTargets(targetInput){
+//async function readTargets(filePath){
+  if (!targetInput) return ['https://www.youtube.com'];
 
-  var targets =  fs.readFileSync(filePath).toString().split("\n");
+  var targets =  fs.readFileSync(targetInput).toString().split("\n");
   targets = await targets.filter(Boolean); // Filter for empty string
   return await targets
 }
@@ -100,13 +120,55 @@ async function scrap(targets){
   return urls;
 }
 
-// Main
-const args = process.argv.slice(2);
+/*
+const args = process.args.slice(2);
 const targetPath = args[0] ? args[0].toString() : undefined;
 const resultPath = args[1] ? args[1].toString() : undefined;
 const blacklistPath = args[2] ? args[2].toString() : undefined;
 const depth = args[3] ? args[3].toString() : undefined;
+*/
 
+
+// arg: [alias, nargs, isrequired, defaultValue]
+const argsMap = {
+  't':['targets', 'Input file path', true, './targets.txt'],
+  'u':['url', 'Targets array list', false, ['https://www.twitter.com']], // unhandled
+  'r':['results', 'Output file path', false, './results.txt'],
+  'd':['depth', 'Crawling depth', false, 1], // unhandled
+  'b':['blacklist', 'Blacklist file path', false, './blacklist.txt'],
+  'v':['verbose', 'Verbose logging', false, true]
+}
+
+function cliHandler(yargs, argsMap){
+  const targetOptKW = 't';
+  const resultOptKW = 'r';
+  // https://github.com/yargs/yargs/blob/master/docs/examples.md
+  // generate aliases and descriptions
+  for (const [key, value] of Object.entries(argsMap)){
+    yargs.alias(key,value[0]);
+    yargs.describe(key,value[1]);
+  }
+
+  yargs.usage('Usage: node $0 -'+targetOptKW+' ./targets.txt -'+resultOptKW+' ./results.txt [options]');
+  yargs.help('h');
+  yargs.alias('h','help')
+  yargs.demandOption([targetOptKW]);
+  yargs.boolean(['v']);
+  yargs.epilog('-GoMerchants InfoSec 2020-');
+
+
+  return yargs;
+}
+
+yargs = cliHandler(yargs, argsMap);
+
+const args = yargs.argv;
+const targetPath = args.f ? args.f.toString() : undefined;
+const resultPath = args.o ? args.o.toString() : undefined;
+const blacklistPath = args.b ? args.b.toString() : undefined;
+const depth = args.d ? args.d.toString() : undefined;
+
+// Main
 readTargets(targetPath).then((targets,resultPath)=>{
   console.log(targets);
   scrap(targets).then(urls => {
