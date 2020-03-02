@@ -14,14 +14,11 @@ function printVerbose(text, verboseLevel=verbose){
 
 // Read targets from a file
 async function readTargets(targetInput){
-//async function readTargets(filePath){
   if (!targetInput) return ['https://www.youtube.com'];
 
   if (fs.existsSync(targetInput)) {
-    //file exists
     var targets =  fs.readFileSync(targetInput).toString().split("\n");
-    targets = await targets.filter(Boolean); // Filter for empty string
-    return await targets
+    return await targets.filter(Boolean); // Filter for empty string
   } else{
       throw new Error("File does not exists: "+targetInput);
   }
@@ -37,7 +34,7 @@ function writeResults(urls_set, resultPath){
   });
 
   printVerbose(urls_set);
-  printVerbose("output is written to "+resultPath);
+  printVerbose("Output is written to "+resultPath);
 }
 
 // Get combine with base url if not
@@ -64,14 +61,14 @@ function urlNormalize(url){
   } catch (e){
     printVerbose("Irregular URL Format");
   }
-  return url.join("/")
+  return url.join("/");
 }
 
 // Filter for blacklist (result will still be recorded, but wont be crawled)
 function blacklistFilter(urls, blacklistPath){ // hard match
-  return readTargets(blacklistPath).then(b => {
-    return urls.filter((u) => {
-      return !b.includes(u);
+  return readTargets(blacklistPath).then(blacklisted => { // for every blacklist entry
+    return urls.filter(url => { // filter urls for those entries
+      return !blacklisted.includes(url);
     });
   });
 }
@@ -105,7 +102,8 @@ async function scrap(targets){
     await page.close();
 
     urls = urls.concat(curr_page_urls);
-    printVerbose("["+target+"]"+" is scrapped");
+    printVerbose("-".repeat(100));
+    printVerbose("["+target+"]"+" scrapped");
   }
 
   await browser.close();
@@ -153,7 +151,8 @@ async function main(targetPath, resultPath, blacklistPath, depth, verbose){
   }
 
   // loop from here
-  var currDepth = depth;
+  var currDepth = 1;
+  // while(currDepth<(depth+1) && targets.length>0){
   printVerbose("Depth "+currDepth+" commenced");
   printVerbose("-".repeat(100));
 
@@ -172,10 +171,10 @@ async function main(targetPath, resultPath, blacklistPath, depth, verbose){
   printVerbose("=".repeat(100));
 
   currDepth++;
+  // targets = resultFiltered;}
 }
 
-// execution
-
+// Execution
 yargs = cliHandler(yargs, argsMap);
 
 const args = yargs.argv;
