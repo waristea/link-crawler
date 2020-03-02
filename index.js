@@ -6,35 +6,29 @@ const puppeteer = require('puppeteer');
 var yargs = require('yargs');
 // https://stackoverflow.com/questions/9781218/how-to-change-node-jss-console-font-color
 
-
-/*
-const path = './file.txt'
-
-try {
-  if (fs.existsSync(path)) {
-    //file exists
+function printVerbose(text, verboseLevel=verbose){
+  if (verboseLevel==1){
+    console.log(text);
   }
-} catch(err) {
-  console.error(err)
 }
-
-*/
-
-// Determine if it is pure filename, ./filename, a domain name, a list of domain name,
-
 
 // Read targets from a file
 async function readTargets(targetInput){
 //async function readTargets(filePath){
   if (!targetInput) return ['https://www.youtube.com'];
 
-  var targets =  fs.readFileSync(targetInput).toString().split("\n");
-  targets = await targets.filter(Boolean); // Filter for empty string
-  return await targets
+  if (fs.existsSync(targetInput)) {
+    //file exists
+    var targets =  fs.readFileSync(targetInput).toString().split("\n");
+    targets = await targets.filter(Boolean); // Filter for empty string
+    return await targets
+  } else{
+      throw new Error("File does not exists: "+targetInput);
+  }
 }
 
 // Write results to a file
-function writeResults(urls_set, resultPath, is_printed){
+function writeResults(urls_set, resultPath){
   resultPath = resultPath ? resultPath : './results.txt';
 
   fs.writeFileSync(resultPath, "");
@@ -42,9 +36,8 @@ function writeResults(urls_set, resultPath, is_printed){
     fs.appendFileSync(resultPath, item+"\n");
   });
 
-  if (is_printed) console.log(urls_set);
-
-  console.log("file is written to "+resultPath);
+  printVerbose(urls_set);
+  printVerbose("output is written to "+resultPath);
 }
 
 // Get combine with base url if not
@@ -69,7 +62,7 @@ function urlNormalize(url){
   try{
     if (url.length == 0) return "http://"+url[0] // i.e. www.google.com
   } catch (e){
-    console.log("Irregular URL Format")
+    printVerbose("Irregular URL Format");
   }
   return url.join("/")
 }
@@ -112,22 +105,12 @@ async function scrap(targets){
     await page.close();
 
     urls = urls.concat(curr_page_urls);
-    console.log("["+target+"]"+" is scrapped");
+    printVerbose("["+target+"]"+" is scrapped");
   }
 
   await browser.close();
-  //console.log(urls);
   return urls;
 }
-
-/*
-const args = process.args.slice(2);
-const targetPath = args[0] ? args[0].toString() : undefined;
-const resultPath = args[1] ? args[1].toString() : undefined;
-const blacklistPath = args[2] ? args[2].toString() : undefined;
-const depth = args[3] ? args[3].toString() : undefined;
-*/
-
 
 // arg: [alias, nargs, isrequired, defaultValue]
 const argsMap = {
@@ -160,27 +143,46 @@ function cliHandler(yargs, argsMap){
   return yargs;
 }
 
+// Main
+async function main(targetPath, resultPath, blacklistPath, depth, verbose){
+  try { // see if target file exists
+    var targets = await readTargets(targetPath);
+  } catch(err) {
+    console.log(err.message);
+    return;
+  }
+
+  // loop from here
+  var currDepth = depth;
+  printVerbose("Depth "+currDepth+" commenced");
+  printVerbose("-".repeat(100));
+
+  var results = await scrap(targets);
+  var resultSet = new Set(results);
+  var resultBase = new Set(Array.from(resultSet).map(url => getBase(url)));
+  var resultFiltered = await blacklistFilter(Array.from(resultBase), blacklistPath);
+
+  writeResults(resultSet, resultPath);
+  printVerbose("-".repeat(100));
+  printVerbose("Depth : "+currDepth);
+  printVerbose("Base Url Set :");
+  printVerbose(await Array.from(resultBase));
+  printVerbose("Filtered Url Set : ");
+  printVerbose(resultFiltered);
+  printVerbose("=".repeat(100));
+
+  currDepth++;
+}
+
+// execution
+
 yargs = cliHandler(yargs, argsMap);
 
 const args = yargs.argv;
-const targetPath = args.f ? args.f.toString() : undefined;
+const targetPath = args.t ? args.t.toString() : undefined;
 const resultPath = args.o ? args.o.toString() : undefined;
 const blacklistPath = args.b ? args.b.toString() : undefined;
-const depth = args.d ? args.d.toString() : undefined;
+const depth = args.d ? args.d.toString() : 1;
+const verbose = args.v ? args.v.toString() : 1; // accessed globally by printVerbose
 
-// Main
-readTargets(targetPath).then((targets,resultPath)=>{
-  console.log(targets);
-  scrap(targets).then(urls => {
-    var urlSet = new Set(urls);
-    writeResults(urlSet, resultPath, true);
-
-    var baseUrls = new Set();
-    urlSet.forEach(url => baseUrls.add(getBase(url))); // get base only
-    console.log("Base urls:");
-    console.log(Array.from(baseUrls));
-
-    console.log("Filtered:");
-    blacklistFilter(Array.from(baseUrls), "./blacklist.txt").then(u => console.log(u));
-  });
-});
+main(targetPath, resultPath, blacklistPath, depth);
