@@ -112,7 +112,7 @@ const argsMap = {
   'r':['results', 'Output file path', false, './results.txt'],
   'd':['depth', 'Crawling depth', false, 1],
   'b':['blacklist', 'Blacklist file path to prevent an url for being crawled (hard match)', false, './blacklist.txt'],
-  's':['stripped', 'Strip to base url before crawling', false, true], // unhandled
+  'full':['full', 'Use full url for crawling instead of its base', false, false],
   'v':['verbose', 'Verbosity level', false, true]
 }
 
@@ -122,7 +122,9 @@ function cliHandler(yargs, argsMap){
   // https://github.com/yargs/yargs/blob/master/docs/examples.md
   // generate aliases and descriptions
   for (const [key, value] of Object.entries(argsMap)){
-    yargs.alias(key,value[0]);
+    if (key === value){
+      yargs.alias(key,value[0]);
+    }
     yargs.describe(key,value[1]);
   }
 
@@ -130,7 +132,7 @@ function cliHandler(yargs, argsMap){
   yargs.help('h');
   yargs.alias('h','help')
   yargs.demandOption([targetOptKW]);
-  yargs.boolean(['s']);
+  yargs.boolean(['h']);
   yargs.epilog('-GoMerchants InfoSec 2020-');
 
 
@@ -138,7 +140,7 @@ function cliHandler(yargs, argsMap){
 }
 
 // Main
-async function main(targetPath, resultPath, blacklistPath, depth, stripped){
+async function main(targetPath, resultPath, blacklistPath, depth, full){
   try { // see if target file exists
     var targets = await readTargets(targetPath);
   } catch(err) {
@@ -165,10 +167,10 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
       // Main
       var results = await scrap(target);
       var resultSet = Array.from(new Set(results)); // Remove duplicates
-      var resultBase = resultSet; // If stripped is false, it's still defined
+      var resultBase = resultSet; // If is full url, it's still defined
 
       // Cleaning results
-      if (stripped){
+      if (!full){
           resultBase = Array.from(new Set(resultSet.map(url => getBase(url))));
       }
       var resultFiltered = await blacklistFilter(resultBase, blacklistPath);
@@ -177,7 +179,7 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
       printVerbose("-".repeat(100));
       printVerbose("["+target+"]"+" scrapped");
       printVerbose("Depth : "+currDepth);
-      if (stripped) {
+      if (!full) {
         printVerbose("Result Base Url Set :");
         printVerbose(await Array.from(resultBase));
       }
@@ -219,7 +221,7 @@ const targetPath = args.t ? args.t.toString() : undefined;
 const resultPath = args.o ? args.o.toString() : undefined;
 const blacklistPath = args.b ? args.b.toString() : undefined;
 const depth = args.d ? parseInt(args.d.toString()) : argsMap["d"][3];
-const stripped = args.s ? args.s : argsMap["s"][3];
+const full = args.full ? args.full : argsMap["full"][3];
 const verbose = args.v ? args.v : argsMap["v"][3]; // accessed globally by printVerbose
 
-main(targetPath, resultPath, blacklistPath, depth, stripped);
+main(targetPath, resultPath, blacklistPath, depth, full);
