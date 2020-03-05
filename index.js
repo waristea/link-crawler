@@ -25,14 +25,14 @@ async function readTargets(targetInput){
 }
 
 // Write results to a file
-function writeResults(parentUrl, urlSet, resultPath){
+function writeResults(urlSet, resultPath){
   resultPath = resultPath ? resultPath : './results.txt';
-  const outData = {parentUrl:Array.from(urlSet)}
 
-  fs.writeFileSync(resultPath, "");
-  fs.appendFileSync(resultPath, JSON.stringify(outData));
+  fs.writeFileSync(resultPath, JSON.stringify(urlSet, null, 4));
 
-  printVerbose(urlSet);
+  printVerbose("End Result:")
+  printVerbose(JSON.stringify(urlSet, null, 4));
+  printVerbose("=".repeat(100))
   printVerbose("Output is written to "+resultPath);
 }
 
@@ -146,25 +146,31 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
     return;
   }
 
-  var scrappedTargets = [];
-  var parentUrl = "";
+  var endResult = {};
 
   // loop from here
   var currDepth = 1;
-  while(currDepth<(depth+1) && targets.length>0){
+  while(currDepth<(depth+1) && targets.length>0){ // scrap till depth
     printVerbose("Depth "+currDepth+" commenced");
     printVerbose("-".repeat(100));
 
-    for (const target of targets){
-      var results = await scrap(target);
-      var resultSet = new Set(results);
-      var resultBase = resultSet;
-      if (stripped){
-          resultBase = new Set(Array.from(resultSet).map(url => getBase(url)));
-      }
-      var resultFiltered = await blacklistFilter(Array.from(resultBase), blacklistPath);
+    var depthResult = {"targets":{}, "scrappedBeforeDepth":[]}
+    var scrappedTargets = [];
 
-      writeResults(target, resultSet, resultPath);
+    for (const target of targets){ // scrap for each target
+      var targetEndResult = {};
+      // Main
+      var results = await scrap(target);
+      var resultSet = Array.from(new Set(results)); // Remove duplicates
+      var resultBase = resultSet; // If stripped is false, it's still defined
+
+      // Cleaning results
+      if (stripped){
+          resultBase = Array.from(new Set(resultSet.map(url => getBase(url))));
+      }
+      var resultFiltered = await blacklistFilter(resultBase, blacklistPath);
+
+      // Reporting to CLI
       printVerbose("-".repeat(100));
       printVerbose("["+target+"]"+" scrapped");
       printVerbose("Depth : "+currDepth);
@@ -174,12 +180,29 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
       }
       printVerbose("Result Filtered Url Set : ");
       printVerbose(resultFiltered);
+
+      // Target-level Reporting to file
+      if (!(target in targetEndResult)) { // check if target has already been scrapped on this depth
+        targetEndResult = {"resultSet":[], "resultBase":[], "resultFiltered":[]};
+      }
+      targetEndResult["resultSet"].push(...resultSet);
+      targetEndResult["resultBase"].push(...resultBase);
+      targetEndResult["resultFiltered"].push(...resultFiltered);
+
+      depthResult["targets"][target] = targetEndResult;
     }
+    // Depth-level Reporting to file
     printVerbose("=".repeat(100));
-    currDepth++;
+
+    depthResult["scrappedBeforeDepth"] = scrappedTargets;
+    endResult["depth-"+currDepth.toString()] = depthResult;
+
     scrappedTargets = scrappedTargets.concat(targets);
     targets = resultFiltered.filter(r => !scrappedTargets.includes(r)); // exclude scrapped targets
+
+    currDepth++;
   }
+  writeResults(endResult, resultPath);
 }
 
 // Execution
