@@ -7,7 +7,7 @@ var yargs = require('yargs');
 // https://stackoverflow.com/questions/9781218/how-to-change-node-jss-console-font-color
 
 function printVerbose(text, verboseLevel=verbose){
-  if (verboseLevel==1){
+  if (verboseLevel){// may be changed to integer later on
     console.log(text);
   }
 }
@@ -25,15 +25,14 @@ async function readTargets(targetInput){
 }
 
 // Write results to a file
-function writeResults(urls_set, resultPath){
+function writeResults(parentUrl, urlSet, resultPath){
   resultPath = resultPath ? resultPath : './results.txt';
+  const outData = {parentUrl:Array.from(urlSet)}
 
   fs.writeFileSync(resultPath, "");
-  urls_set.forEach((item) => {
-    fs.appendFileSync(resultPath, item+"\n");
-  });
+  fs.appendFileSync(resultPath, JSON.stringify(outData));
 
-  printVerbose(urls_set);
+  printVerbose(urlSet);
   printVerbose("Output is written to "+resultPath);
 }
 
@@ -74,37 +73,33 @@ function blacklistFilter(urls, blacklistPath){ // hard match
 }
 
 // Scrap
-async function scrap(targets){
+async function scrap(target){
   const browser = await puppeteer.launch({ dumpio: true });
 
   var urls = []; // not a set just in case number of occurence needs to be counted
 
-  for (const target of targets){
-    const page = await browser.newPage(); // create new page
-    await page.exposeFunction('formatURL', formatURL);
-    const response = await page.goto(target); // access target
-    await page.waitFor(5000);
-    const pageUrl = page.url();
+  const page = await browser.newPage(); // create new page
+  await page.exposeFunction('formatURL', formatURL);
+  const response = await page.goto(target); // access target
+  await page.waitFor(5000);
+  const pageUrl = page.url();
 
-    var curr_page_urls = []
+  // scrapping
+  var curr_page_urls = []
+  curr_page_urls = await page.evaluate(async (pageUrl, curr_page_urls) => {
+    const anchors = Array.from(document.querySelectorAll('a')); // get <a> tag
 
-    curr_page_urls = await page.evaluate(async (pageUrl, curr_page_urls) => {
-      const anchors = Array.from(document.querySelectorAll('a')); // get <a> tag
+    for (const anchor of anchors) {
+      const href = anchor.getAttribute('href'); // get href attr
+      const hrefUrl = await formatURL(href, pageUrl); // get base url
+      curr_page_urls.push(hrefUrl);
+    }
+    return curr_page_urls;
+  }, pageUrl, curr_page_urls);
 
-      for (const anchor of anchors) {
-        const href = anchor.getAttribute('href'); // get href attr
-        const hrefUrl = await formatURL(href, pageUrl); // get base url
-        curr_page_urls.push(hrefUrl);
-      }
-      return curr_page_urls;
-    }, pageUrl, curr_page_urls);
+  await page.close();
 
-    await page.close();
-
-    urls = urls.concat(curr_page_urls);
-    printVerbose("-".repeat(100));
-    printVerbose("["+target+"]"+" scrapped");
-  }
+  urls = urls.concat(curr_page_urls);
 
   await browser.close();
   return urls;
@@ -115,9 +110,10 @@ const argsMap = {
   't':['targets', 'Input file path', true, './targets.txt'],
   'u':['url', 'Targets array list', false, ['https://www.twitter.com']], // unhandled
   'r':['results', 'Output file path', false, './results.txt'],
-  'd':['depth', 'Crawling depth', false, 1], // unhandled
-  'b':['blacklist', 'Blacklist file path', false, './blacklist.txt'],
-  'v':['verbose', 'Verbose logging', false, true]
+  'd':['depth', 'Crawling depth', false, 1],
+  'b':['blacklist', 'Blacklist file path to prevent an url for being crawled (hard match)', false, './blacklist.txt'],
+  's':['stripped', 'Strip to base url before crawling', false, true], // unhandled
+  'v':['verbose', 'Verbosity level', false, true]
 }
 
 function cliHandler(yargs, argsMap){
@@ -134,7 +130,7 @@ function cliHandler(yargs, argsMap){
   yargs.help('h');
   yargs.alias('h','help')
   yargs.demandOption([targetOptKW]);
-  yargs.boolean(['v']);
+  yargs.boolean(['s']);
   yargs.epilog('-GoMerchants InfoSec 2020-');
 
 
@@ -142,7 +138,7 @@ function cliHandler(yargs, argsMap){
 }
 
 // Main
-async function main(targetPath, resultPath, blacklistPath, depth, verbose){
+async function main(targetPath, resultPath, blacklistPath, depth, stripped){
   try { // see if target file exists
     var targets = await readTargets(targetPath);
   } catch(err) {
@@ -150,28 +146,40 @@ async function main(targetPath, resultPath, blacklistPath, depth, verbose){
     return;
   }
 
+  var scrappedTargets = [];
+  var parentUrl = "";
+
   // loop from here
   var currDepth = 1;
-  // while(currDepth<(depth+1) && targets.length>0){
-  printVerbose("Depth "+currDepth+" commenced");
-  printVerbose("-".repeat(100));
+  while(currDepth<(depth+1) && targets.length>0){
+    printVerbose("Depth "+currDepth+" commenced");
+    printVerbose("-".repeat(100));
 
-  var results = await scrap(targets);
-  var resultSet = new Set(results);
-  var resultBase = new Set(Array.from(resultSet).map(url => getBase(url)));
-  var resultFiltered = await blacklistFilter(Array.from(resultBase), blacklistPath);
+    for (const target of targets){
+      var results = await scrap(target);
+      var resultSet = new Set(results);
+      var resultBase = resultSet;
+      if (stripped){
+          resultBase = new Set(Array.from(resultSet).map(url => getBase(url)));
+      }
+      var resultFiltered = await blacklistFilter(Array.from(resultBase), blacklistPath);
 
-  writeResults(resultSet, resultPath);
-  printVerbose("-".repeat(100));
-  printVerbose("Depth : "+currDepth);
-  printVerbose("Base Url Set :");
-  printVerbose(await Array.from(resultBase));
-  printVerbose("Filtered Url Set : ");
-  printVerbose(resultFiltered);
-  printVerbose("=".repeat(100));
-
-  currDepth++;
-  // targets = resultFiltered;}
+      writeResults(target, resultSet, resultPath);
+      printVerbose("-".repeat(100));
+      printVerbose("["+target+"]"+" scrapped");
+      printVerbose("Depth : "+currDepth);
+      if (stripped) {
+        printVerbose("Result Base Url Set :");
+        printVerbose(await Array.from(resultBase));
+      }
+      printVerbose("Result Filtered Url Set : ");
+      printVerbose(resultFiltered);
+    }
+    printVerbose("=".repeat(100));
+    currDepth++;
+    scrappedTargets = scrappedTargets.concat(targets);
+    targets = resultFiltered.filter(r => !scrappedTargets.includes(r)); // exclude scrapped targets
+  }
 }
 
 // Execution
@@ -181,7 +189,8 @@ const args = yargs.argv;
 const targetPath = args.t ? args.t.toString() : undefined;
 const resultPath = args.o ? args.o.toString() : undefined;
 const blacklistPath = args.b ? args.b.toString() : undefined;
-const depth = args.d ? args.d.toString() : 1;
-const verbose = args.v ? args.v.toString() : 1; // accessed globally by printVerbose
+const depth = args.d ? parseInt(args.d.toString()) : argsMap["d"][3];
+const stripped = args.s ? args.s : argsMap["s"][3];
+const verbose = args.v ? args.v : argsMap["v"][3]; // accessed globally by printVerbose
 
-main(targetPath, resultPath, blacklistPath, depth);
+main(targetPath, resultPath, blacklistPath, depth, stripped);
