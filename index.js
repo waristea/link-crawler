@@ -80,7 +80,7 @@ async function scrap(target){
 
   const page = await browser.newPage(); // create new page
   await page.exposeFunction('formatURL', formatURL);
-  const response = await page.goto(target); // access target
+  const response = await page.goto(target, {waitUntil: 'load', timeout: 0}); // access target
   await page.waitFor(5000);
   const pageUrl = page.url();
 
@@ -187,7 +187,7 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
       }
       targetEndResult["resultSet"].push(...resultSet);
       targetEndResult["resultBase"].push(...resultBase);
-      targetEndResult["resultFiltered"].push(...resultFiltered);
+      targetEndResult["resultAfterFilter"].push(...resultFiltered);
 
       depthResult["targets"][target] = targetEndResult;
     }
