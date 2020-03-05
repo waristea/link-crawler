@@ -150,12 +150,15 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
 
   // loop from here
   var currDepth = 1;
+  var scrappedTargets = [];
+
+
   while(currDepth<(depth+1) && targets.length>0){ // scrap till depth
     printVerbose("Depth "+currDepth+" commenced");
     printVerbose("-".repeat(100));
 
     var depthResult = {"targets":{}, "scrappedBeforeDepth":[]}
-    var scrappedTargets = [];
+    var targetsNextDepth = [];
 
     for (const target of targets){ // scrap for each target
       var targetEndResult = {};
@@ -183,13 +186,15 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
 
       // Target-level Reporting to file
       if (!(target in targetEndResult)) { // check if target has already been scrapped on this depth
-        targetEndResult = {"resultSet":[], "resultBase":[], "resultFiltered":[]};
+        targetEndResult = {"resultSet":[], "resultBase":[], "resultAfterFilter":[]};
       }
       targetEndResult["resultSet"].push(...resultSet);
       targetEndResult["resultBase"].push(...resultBase);
       targetEndResult["resultAfterFilter"].push(...resultFiltered);
 
       depthResult["targets"][target] = targetEndResult;
+
+      targetsNextDepth.push(...resultFiltered); // output as input for next iter
     }
     // Depth-level Reporting to file
     printVerbose("=".repeat(100));
@@ -197,8 +202,9 @@ async function main(targetPath, resultPath, blacklistPath, depth, stripped){
     depthResult["scrappedBeforeDepth"] = scrappedTargets;
     endResult["depth-"+currDepth.toString()] = depthResult;
 
+    // exclude scrapped targets on next iter
     scrappedTargets = scrappedTargets.concat(targets);
-    targets = resultFiltered.filter(r => !scrappedTargets.includes(r)); // exclude scrapped targets
+    targets = targetsNextDepth.filter(r => !scrappedTargets.includes(r));
 
     currDepth++;
   }
